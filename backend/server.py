@@ -1,10 +1,9 @@
 import os
 import subprocess
+import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from github import Github
-import uuid
-import base64
 
 app = FastAPI()
 
@@ -16,45 +15,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load GitHub token and repo
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
-
-g = Github(GITHUB_TOKEN)
-repo = g.get_repo(GITHUB_REPO)
 
 @app.post("/run")
 async def run_code(request: Request):
     data = await request.json()
     code = data.get("code", "")
-    code_id = uuid.uuid4().hex[:8]
-    filename = f"codes/{code_id}.py"
+    filename = f"temp_{uuid.uuid4().hex[:8]}.py"
 
-    # Save to GitHub
-    try:
-        repo.create_file(filename, f"Add {code_id}", code)
-        share_url = f"https://no-body-0.github.io/FrontEnd-Reop/?id={code_id}"
-    except Exception as e:
-        share_url = f"[GitHub save failed: {e}]"
-
-    # Execute locally
-    with open("temp.py", "w") as f:
+    with open(filename, "w") as f:
         f.write(code)
+
     try:
-        result = subprocess.run(["python", "temp.py"], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            ["python", filename],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
         output = result.stdout + result.stderr
     except subprocess.TimeoutExpired:
         output = "Error: Code execution timed out."
-    finally:
-        os.remove("temp.py")
 
-    return {"output": output, "share_url": share_url}
+    os.remove(filename)
+    return {"output": output}
+
+
+@app.post("/share")
+async def share_code(request: Request):
+    data = await request.json()
+    code = data.get("code", "")
+    code_id = f"code_{uuid.uuid4().hex[:8]}.py"
+
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(GITHUB_REPO)
+        repo.create_file(f"codes/{code_id}", "Add shared code", code)
+        return {"url": f"https://no-body-0.github.io/FrontEnd-Reop/?id={code_id}"}
+    except Exception as e:
+        return {"error": str(e)}
+
 
 @app.get("/code/{code_id}")
 async def get_code(code_id: str):
     try:
-        contents = repo.get_contents(f"codes/{code_id}.py")
-        code = base64.b64decode(contents.content).decode("utf-8")
-        return {"code": code}
-    except Exception:
-        return {"error": "Code not found"}
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(GITHUB_REPO)
+        file_content = repo.get_contents(f"codes/{code_id}")
+        return {"code": file_content.decoded_content.decode()}
+    except Exception as e:
+        return {"error": str(e)}
