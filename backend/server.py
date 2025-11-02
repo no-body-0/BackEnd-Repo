@@ -1,6 +1,9 @@
+import os
+import subprocess
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import subprocess, tempfile, os, uvicorn
+from github import Github
+import uuid
 
 app = FastAPI()
 
@@ -12,29 +15,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def home():
-    return {"status": "Backend running successfully"}
+GITHUB_TOKEN = os.getenv("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")
+GITHUB_REPO = os.getenv("no-body-0/code-storage")
 
 @app.post("/run")
 async def run_code(request: Request):
     data = await request.json()
     code = data.get("code", "")
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as tmp:
-        tmp.write(code.encode("utf-8"))
-        tmp.flush()
-        try:
-            result = subprocess.run(
-                ["python", tmp.name],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            output = result.stdout or result.stderr
-        except subprocess.TimeoutExpired:
-            output = "Execution timed out"
-    os.unlink(tmp.name)
-    return {"output": output}
+    filename = f"code_{uuid.uuid4().hex[:8]}.py"
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=10000)
+    # Save code temporarily
+    with open(filename, "w") as f:
+        f.write(code)
+
+    # Execute Python code safely
+    try:
+        result = subprocess.run(
+            ["python", filename],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        output = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        output = "Error: Code execution timed out."
+
+    # Save to GitHub
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(GITHUB_REPO)
+        repo.create_file(f"codes/{filename}", "Add new code", code)
+    except Exception as e:
+        output += f"\n[GitHub save failed: {e}]"
+
+    # Delete temp file
+    os.remove(filename)
+
+    return {"output": output}
