@@ -17,8 +17,8 @@ app.add_middleware(
 )
 
 # Load GitHub token and repo
-GITHUB_TOKEN = os.getenv("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")
-GITHUB_REPO = os.getenv("no-body-0/code-storage")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_REPO = os.getenv("GITHUB_REPO")
 
 g = Github(GITHUB_TOKEN)
 repo = g.get_repo(GITHUB_REPO)
