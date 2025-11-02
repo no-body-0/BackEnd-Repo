@@ -1,39 +1,12 @@
-# backend/server.py
-import os
-import requests
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, JSONResponse
-from starlette.middleware.cors import CORSMiddleware
+import uvicorn
 
 app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-CLIENT_ID = os.getenv("0v2311tAtwsFRqfWs55A")
-CLIENT_SECRET = os.getenv("4d85bc285aacf9d5c94066f4cc4ac20244346814")
-FRONTEND_URL = os.getenv("https://no-body-0.github.io/FrontEnd-Reop")  # e.g. https://YOUR_GH_USERNAME.github.io/FRONTEND_REPO
+@app.get("/")
+def home():
+    return {"status": "Backend running successfully"}
 
-@app.get("/login")
-def login():
-    return RedirectResponse(
-        f"https://github.com/login/oauth/authorize?client_id={CLIENT_ID}&scope=repo"
-    )
-
-@app.get("/callback")
-def callback(code: str):
-    token_url = "https://github.com/login/oauth/access_token"
-    headers = {"Accept": "application/json"}
-    data = {"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET, "code": code}
-    r = requests.post(token_url, headers=headers, data=data)
-    token = r.json().get("access_token")
-    # redirect to frontend with token in URL fragment (safer than query)
-    return RedirectResponse(f"{FRONTEND_URL}/?token={token}")
-
-@app.get("/user")
-def user_info(token: str):
-    r = requests.get("https://api.github.com/user", headers={"Authorization": f"token {token}"})
-    return JSONResponse(r.json())
+if __name__ == "__main__":
+    # Use host=0.0.0.0 for Render
+    uvicorn.run(app, host="0.0.0.0", port=10000)
