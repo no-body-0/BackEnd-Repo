@@ -1,90 +1,60 @@
 import os
 import subprocess
-import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from github import Github
+import uuid
+import base64
 
 app = FastAPI()
 
-# ===== CORS (Frontend Access) =====
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can later restrict this to your frontend domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ===== GitHub Setup =====
+# Load GitHub token and repo
 GITHUB_TOKEN = os.getenv("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")
 GITHUB_REPO = os.getenv("no-body-0/code-storage")
 
-# ====== Run Code Endpoint ======
+g = Github(GITHUB_TOKEN)
+repo = g.get_repo(GITHUB_REPO)
+
 @app.post("/run")
 async def run_code(request: Request):
     data = await request.json()
     code = data.get("code", "")
-    filename = f"code_{uuid.uuid4().hex[:8]}.py"
-
-    # Save temporarily
-    with open(filename, "w") as f:
-        f.write(code)
-
-    # Execute Python code safely
-    try:
-        result = subprocess.run(
-            ["python", filename],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        output = result.stdout + result.stderr
-    except subprocess.TimeoutExpired:
-        output = "Error: Code execution timed out."
+    code_id = uuid.uuid4().hex[:8]
+    filename = f"codes/{code_id}.py"
 
     # Save to GitHub
     try:
-        g = Github(GITHUB_TOKEN)
-        repo = g.get_repo(GITHUB_REPO)
-        repo.create_file(f"codes/{filename}", "Add new code", code)
+        repo.create_file(filename, f"Add {code_id}", code)
+        share_url = f"https://no-body-0.github.io/FrontEnd-Reop/?id={code_id}"
     except Exception as e:
-        output += f"\n[GitHub save failed: {e}]"
+        share_url = f"[GitHub save failed: {e}]"
 
-    # Delete temp file
-    os.remove(filename)
-
-    return {"output": output}
-
-
-# ====== Share Code Endpoint ======
-@app.post("/share")
-async def share_code(request: Request):
-    data = await request.json()
-    code = data.get("code", "")
-    share_id = uuid.uuid4().hex[:8]
-    filename = f"shared/{share_id}.py"
-
+    # Execute locally
+    with open("temp.py", "w") as f:
+        f.write(code)
     try:
-        g = Github(GITHUB_TOKEN)
-        repo = g.get_repo(GITHUB_REPO)
-        repo.create_file(filename, "Share new code", code)
-        share_url = f"https://no-body-0.github.io/FrontEnd-Reop/?id={share_id}"
-        return {"share_url": share_url, "id": share_id}
-    except Exception as e:
-        return {"error": str(e)}
+        result = subprocess.run(["python", "temp.py"], capture_output=True, text=True, timeout=5)
+        output = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        output = "Error: Code execution timed out."
+    finally:
+        os.remove("temp.py")
 
+    return {"output": output, "share_url": share_url}
 
-# ====== Load Code Endpoint ======
-@app.get("/load")
-async def load_code(id: str):
-    filename = f"shared/{id}.py"
-
+@app.get("/code/{code_id}")
+async def get_code(code_id: str):
     try:
-        g = Github(GITHUB_TOKEN)
-        repo = g.get_repo(GITHUB_REPO)
-        file = repo.get_contents(filename)
-        code = file.decoded_content.decode()
+        contents = repo.get_contents(f"codes/{code_id}.py")
+        code = base64.b64decode(contents.content).decode("utf-8")
         return {"code": code}
-    except Exception as e:
-        return {"error": f"Code not found or {e}"}
+    except Exception:
+        return {"error": "Code not found"}
