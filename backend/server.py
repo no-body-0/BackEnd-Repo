@@ -13,9 +13,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
-FRONTEND_URL = os.getenv("FRONTEND_URL")  # e.g. https://YOUR_GH_USERNAME.github.io/FRONTEND_REPO
+CLIENT_ID = os.getenv("0v2311tAtwsFRqfWs55A")
+CLIENT_SECRET = os.getenv("4d85bc285aacf9d5c94066f4cc4ac20244346814")
+FRONTEND_URL = os.getenv("https://no-body-0.github.io/FrontEnd-Reop")  # e.g. https://YOUR_GH_USERNAME.github.io/FRONTEND_REPO
 
 @app.get("/login")
 def login():
