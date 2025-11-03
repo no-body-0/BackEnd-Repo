@@ -7,6 +7,7 @@ from github import Github
 
 app = FastAPI()
 
+# Allow frontend access from anywhere
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,33 +16,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# GitHub environment variables
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 
+# ============================
+# ✅ Run Python Code Endpoint
+# ============================
 @app.post("/run")
 async def run_code(request: Request):
     data = await request.json()
     code = data.get("code", "")
+    stdin = data.get("stdin", "")  # optional user input if frontend provides any
     filename = f"temp_{uuid.uuid4().hex[:8]}.py"
 
+    # Write user code to temp file
     with open(filename, "w") as f:
         f.write(code)
 
     try:
+        # Execute safely in subprocess
         result = subprocess.run(
             ["python", filename],
+            input=stdin,
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=8
         )
         output = result.stdout + result.stderr
+
     except subprocess.TimeoutExpired:
         output = "Error: Code execution timed out."
+    except Exception as e:
+        output = f"Runtime error: {str(e)}"
 
+    # Clean up temp file
     os.remove(filename)
     return {"output": output}
 
 
+# ============================
+# ✅ Share Code Endpoint
+# ============================
 @app.post("/share")
 async def share_code(request: Request):
     data = await request.json()
@@ -57,6 +73,9 @@ async def share_code(request: Request):
         return {"error": str(e)}
 
 
+# ============================
+# ✅ Load Shared Code Endpoint
+# ============================
 @app.get("/code/{code_id}")
 async def get_code(code_id: str):
     try:
