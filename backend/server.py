@@ -7,7 +7,7 @@ from github import Github
 
 app = FastAPI()
 
-# Allow frontend access from anywhere
+# === CORS Settings ===
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,9 +16,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GitHub environment variables
+# === GitHub Configuration ===
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
+
 
 # ============================
 # ✅ Run Python Code Endpoint
@@ -27,31 +28,36 @@ GITHUB_REPO = os.getenv("GITHUB_REPO")
 async def run_code(request: Request):
     data = await request.json()
     code = data.get("code", "")
-    stdin = data.get("stdin", "")  # optional user input if frontend provides any
+    stdin = data.get("stdin", "") or ""  # get input text from frontend
     filename = f"temp_{uuid.uuid4().hex[:8]}.py"
 
-    # Write user code to temp file
-    with open(filename, "w") as f:
+    # Write user code to a temporary file
+    with open(filename, "w", encoding="utf-8") as f:
         f.write(code)
 
     try:
-        # Execute safely in subprocess
+        # Run code with user-provided input
         result = subprocess.run(
-            ["python", filename],
-            input=stdin,
-            capture_output=True,
-            text=True,
-            timeout=8
+            ["python3", filename],
+            input=stdin.encode(),        # feed input properly
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10                   # prevent infinite loops
         )
-        output = result.stdout + result.stderr
+
+        output = (result.stdout + result.stderr).decode()
 
     except subprocess.TimeoutExpired:
-        output = "Error: Code execution timed out."
+        output = "❌ Error: Code execution timed out."
     except Exception as e:
-        output = f"Runtime error: {str(e)}"
+        output = f"⚠️ Runtime error: {str(e)}"
 
-    # Clean up temp file
-    os.remove(filename)
+    # Remove temporary file after execution
+    try:
+        os.remove(filename)
+    except:
+        pass
+
     return {"output": output}
 
 
