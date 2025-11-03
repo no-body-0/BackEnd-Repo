@@ -28,7 +28,7 @@ GITHUB_REPO = os.getenv("GITHUB_REPO")
 async def run_code(request: Request):
     data = await request.json()
     code = data.get("code", "")
-    stdin = data.get("stdin", "") or ""  # get input text from frontend
+    stdin = data.get("stdin", "") or ""  # Get input text from frontend
     filename = f"temp_{uuid.uuid4().hex[:8]}.py"
 
     # Write user code to a temporary file
@@ -36,16 +36,16 @@ async def run_code(request: Request):
         f.write(code)
 
     try:
-        # Run code with user-provided input
+        # Run Python code with user-provided input
         result = subprocess.run(
             ["python3", filename],
-            input=stdin.encode(),        # feed input properly
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=10                   # prevent infinite loops
+            input=stdin,                 # Feed stdin directly as text
+            capture_output=True,
+            text=True,                   # Enable text mode (fixes EOFError)
+            timeout=10                   # Prevent infinite loops
         )
 
-        output = (result.stdout + result.stderr).decode()
+        output = result.stdout + result.stderr
 
     except subprocess.TimeoutExpired:
         output = "❌ Error: Code execution timed out."
