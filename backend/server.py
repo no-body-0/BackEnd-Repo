@@ -1,93 +1,54 @@
-import os
-import subprocess
-import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from github import Github
+from pydantic import BaseModel
+import subprocess
+import tempfile
+import os
 
 app = FastAPI()
 
-# === CORS Settings ===
+# Allow frontend from any domain (GitHub Pages)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# === GitHub Configuration ===
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO = os.getenv("GITHUB_REPO")
+class CodeRequest(BaseModel):
+    language: str
+    code: str
 
-
-# ============================
-# ✅ Run Python Code Endpoint
-# ============================
 @app.post("/run")
-async def run_code(request: Request):
-    data = await request.json()
-    code = data.get("code", "")
-    stdin = data.get("stdin", "") or ""  # Get input text from frontend
-    filename = f"temp_{uuid.uuid4().hex[:8]}.py"
+async def run_code(req: CodeRequest):
+    if req.language != "python":
+        return {"output": "⚠️ Live input currently supported only for Python."}
 
-    # Write user code to a temporary file
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(code)
+    # Create a temp file for the Python code
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".py", mode="w") as temp:
+        temp.write(req.code)
+        temp_filename = temp.name
 
     try:
-        # Run Python code with user-provided input
-        result = subprocess.run(
-            ["python3", filename],
-            input=stdin,                 # Feed stdin directly as text
-            capture_output=True,
-            text=True,                   # Enable text mode (fixes EOFError)
-            timeout=10                   # Prevent infinite loops
+        # Start an interactive subprocess
+        proc = subprocess.Popen(
+            ["python3", "-i", temp_filename],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1
         )
-
-        output = result.stdout + result.stderr
-
-    except subprocess.TimeoutExpired:
-        output = "❌ Error: Code execution timed out."
+        output = ""
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            output += line
+        stderr = proc.stderr.read()
+        output += stderr
+        return {"output": output}
     except Exception as e:
-        output = f"⚠️ Runtime error: {str(e)}"
-
-    # Remove temporary file after execution
-    try:
-        os.remove(filename)
-    except:
-        pass
-
-    return {"output": output}
-
-
-# ============================
-# ✅ Share Code Endpoint
-# ============================
-@app.post("/share")
-async def share_code(request: Request):
-    data = await request.json()
-    code = data.get("code", "")
-    code_id = f"code_{uuid.uuid4().hex[:8]}.py"
-
-    try:
-        g = Github(GITHUB_TOKEN)
-        repo = g.get_repo(GITHUB_REPO)
-        repo.create_file(f"codes/{code_id}", "Add shared code", code)
-        return {"url": f"https://no-body-0.github.io/FrontEnd-Reop/?id={code_id}"}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ============================
-# ✅ Load Shared Code Endpoint
-# ============================
-@app.get("/code/{code_id}")
-async def get_code(code_id: str):
-    try:
-        g = Github(GITHUB_TOKEN)
-        repo = g.get_repo(GITHUB_REPO)
-        file_content = repo.get_contents(f"codes/{code_id}")
-        return {"code": file_content.decoded_content.decode()}
-    except Exception as e:
-        return {"error": str(e)}
+        return {"output": f"Error: {e}"}
+    finally:
+        os.remove(temp_filename)
